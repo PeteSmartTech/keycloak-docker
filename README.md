@@ -17,9 +17,14 @@ This repository contains a Docker Compose setup for Keycloak with PostgreSQL, in
 3. Follow the on-screen prompts to complete the installation.
 
 ## ATTENTION
-**Keycloak** in this setup is configured to work behind **reverse-proxy**. Docker will expose port 8443, but **it will not work**.
-You can use for example HAProxy, example HAProxy in Docker repository can be found here: [Click!](https://github.com/PeteSmartTech/haproxy-cloudflare-homeassistant)
+**Keycloak** in this setup is configured to work behind **reverse-proxy**. 
+Docker will expose port 8443, but **it will not work**.
+
+You can use for example HAProxy, example HAProxy in Docker repository can be found here:
+[Click!](https://github.com/PeteSmartTech/haproxy-cloudflare-homeassistant)
+
 This way your reverse-proxy would reach Keycloak at `<keycloak_IP>:8443` but everything else will work via FQDN.
+
 
 ## Installation Options
 
