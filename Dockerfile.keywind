@@ -1,0 +1,69 @@
+# First stage: Build Keywind theme
+FROM node:18 as keywind-builder
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Clone the Keywind repository
+WORKDIR /build
+RUN git clone https://github.com/lukin/keywind.git .
+
+# Install dependencies and build the theme as JAR
+RUN pnpm install
+RUN pnpm build:jar
+
+# Second stage: Build Keycloak with Keywind theme
+FROM quay.io/keycloak/keycloak:latest as keycloak-builder
+
+# Enable health and metrics support
+ENV KC_HEALTH_ENABLED=true
+ENV KC_METRICS_ENABLED=true
+
+# Configure a database vendor and transaction settings
+ENV KC_DB=postgres
+ENV KC_TRANSACTION_XA_ENABLED=false
+
+# Configure hostname
+ENV KC_HOSTNAME_STRICT=true
+ENV KC_HOSTNAME_STRICT_BACKCHANNEL=true
+ENV KC_PROXY=edge
+
+WORKDIR /opt/keycloak
+
+# Copy pre-generated certificates
+COPY ./certs/server.crt /opt/keycloak/conf/server.crt
+COPY ./certs/server.key /opt/keycloak/conf/server.key
+COPY ./certs/server.keystore /opt/keycloak/conf/server.keystore
+
+# Copy the Keywind theme JAR from the keywind-builder stage
+COPY --from=keywind-builder /build/out/keywind.jar /opt/keycloak/providers/keywind.jar
+
+# Fix permissions (Keycloak runs as user 1000)
+USER root
+RUN chown 1000:0 /opt/keycloak/conf/server.crt \
+    && chown 1000:0 /opt/keycloak/conf/server.key \
+    && chown 1000:0 /opt/keycloak/conf/server.keystore \
+    && chmod 644 /opt/keycloak/conf/server.crt \
+    && chmod 600 /opt/keycloak/conf/server.key \
+    && chmod 600 /opt/keycloak/conf/server.keystore \
+    && chown 1000:0 /opt/keycloak/providers/keywind.jar \
+    && chmod 644 /opt/keycloak/providers/keywind.jar
+
+# Switch back to Keycloak user
+USER 1000
+
+# Build Keycloak with the custom theme
+RUN /opt/keycloak/bin/kc.sh build
+
+# Third stage: Create final production image
+FROM quay.io/keycloak/keycloak:latest
+
+# Copy from builder stage
+COPY --from=keycloak-builder /opt/keycloak/ /opt/keycloak/
+
+# Set runtime environment variables
+ENV KC_HTTP_ENABLED=false
+ENV KC_HTTPS_PORT=443
+
+# Production optimized startup command with TLS enabled
+ENTRYPOINT ["/opt/keycloak/bin/kc.sh", "start", "--optimized", "--https-certificate-file=/opt/keycloak/conf/server.crt", "--https-certificate-key-file=/opt/keycloak/conf/server.key"]
